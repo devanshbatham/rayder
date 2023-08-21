@@ -15,7 +15,6 @@
   <a href="#workflows">Workflows</a>
 </p>
 
----
 
 ![rayder](https://github.com/devanshbatham/rayder/blob/main/static/rayder.png?raw=true)
 
