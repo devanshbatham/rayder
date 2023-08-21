@@ -19,7 +19,7 @@
 
 ## About
 
-Rayder is a command-line tool designed to simplify the orchestration and execution of workflows. It allows you to define a series of steps in a YAML file, each consisting of a command to be executed and optional output redirection. Rayder helps automate complex processes, making it easy to streamline repetitive tasks, and executing them pararelly if the commands do not depend on each other. 
+Rayder is a command-line tool designed to simplify the orchestration and execution of workflows. It allows you to define a series of steps in a YAML file, each consisting of a command to be executed and optional output redirection. Rayder helps automate complex processes, making it easy to streamline repetitive tasks, and executing them parallelly if the commands do not depend on each other. 
 
 ## Installation
 
