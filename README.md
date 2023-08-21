@@ -87,4 +87,4 @@ The `parallel` field in the workflow configuration determines whether steps shou
 
 ## Workflows
 
-A collection of Rayder workflows to be publish soon. Stay tuned..
+A collection of [Rayder workflows](https://github.com/devanshbatham/rayder-workflows) to be publish soon. Stay tuned..
