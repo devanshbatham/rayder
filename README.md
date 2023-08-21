@@ -12,7 +12,7 @@
   <a href="#usage">Usage</a> •
   <a href="#workflow-configuration">Workflow Configuration</a> •
   <a href="#parallel-execution">Parallel Execution</a> •
-  <a href="#credits">Credits</a>
+  <a href="#workflows">Workflows</a>
 </p>
 
 ---
@@ -81,3 +81,8 @@ rayder -w workflow.yaml -p '{"ORG":"Yelp, Inc"}'
 ## Parallel Execution
 
 The `parallel` field in the workflow configuration determines whether steps should be executed in parallel or sequentially. Setting `parallel` to `true` allows steps to run concurrently, making it suitable for tasks with no dependencies. When set to `false`, steps will execute one after another.
+
+
+## Workflows
+
+A collection of Rayder workflows to be publish soon. Stay tuned..
