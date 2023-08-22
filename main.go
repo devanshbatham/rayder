@@ -130,6 +130,7 @@ func runParallel(steps map[string]string, numWorkers int, outputDir, outputFile 
 
 			fmt.Printf("[%s] [%s] Executing step: %s: %s\n", getTimeStamp(), getColorizedLog("INFO", "green"), name, cmd)
 			execCmd := exec.Command("sh", "-c", cmd)
+			execCmd.Dir = workflow.OutputDir
 
 			if silent {
 				execCmd.Stdout = ioutil.Discard
@@ -187,6 +188,8 @@ func runSequential(steps map[string]string, outputDir, outputFile string, silent
 
 		fmt.Printf("[%s] [%s] Executing step: %s: %s\n", getTimeStamp(), getColorizedLog("INFO", "green"), stepName, cmd)
 		execCmd := exec.Command("sh", "-c", cmd)
+		execCmd.Dir = workflow.OutputDir
+	
 
 
 		if silent {
