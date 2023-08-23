@@ -160,8 +160,7 @@ modules:
 
   - name: checking-alive-subdomains
     cmds:
-      - cat {{OUTPUT_DIR}}/resolved-subdomains.txt | httpx -silent -threads 1000
-        -o {{OUTPUT_DIR}}/alive-subdomains.txt
+      - cat {{OUTPUT_DIR}}/resolved-subdomains.txt | httpx -silent -threads 1000 -o {{OUTPUT_DIR}}/alive-subdomains.txt
     silent: false
 ```
 
