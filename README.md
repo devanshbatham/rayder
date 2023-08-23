@@ -164,7 +164,6 @@ modules:
     silent: false
 ```
 
-## Executing the Example Workflow
 
 To execute the above workflow, run the following command:
 
