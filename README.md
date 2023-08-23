@@ -178,7 +178,7 @@ The `parallel` field in the workflow configuration determines whether modules sh
 
 ## Workflows
 
-Explore a collection of sample workflows and examples in the [Rayder workflows repository](https://github.com/yourusername/workflow-runner-workflows). Stay tuned for more additions!
+Explore a collection of sample workflows and examples in the [Rayder workflows repository](https://github.com/devanshbatham/rayder-workflows). Stay tuned for more additions!
 
 ## Inspiration
 Inspiration of this project comes from Awesome [taskfile](https://taskfile.dev/) project. 
