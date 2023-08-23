@@ -168,7 +168,7 @@ modules:
 To execute the above workflow, run the following command:
 
 ```sh
-rayder -w path/to/bugbounty.yaml ORG="Yelp, Inc" OUTPUT_DIR=results
+rayder -w path/to/reverse-whois.yaml ORG="Yelp, Inc" OUTPUT_DIR=results
 ```
 
 ## Parallel Execution
