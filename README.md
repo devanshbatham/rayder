@@ -15,7 +15,8 @@
   <a href="#workflows">Workflows</a>
 </p>
 
-![workflow-runner](https://example.com/workflow-runner.png)  <!-- Update with the actual image URL -->
+![rayder](https://github.com/devanshbatham/rayder/blob/main/static/banner.png?raw=true)
+
 
 ## About
 
