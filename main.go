@@ -3,46 +3,48 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"os/exec"
-	"path/filepath"
-	"sort"
+	"strings"
 	"sync"
 	"time"
-	"encoding/json"
+
+	"github.com/fatih/color"
 	"gopkg.in/yaml.v2"
 )
 
-type Workflow struct {
-	Name       string            `yaml:"workflow"`
-	Parallel   bool              `yaml:"parallel"`
-	Workers    int               `yaml:"workers"`
-	Silent     bool              `yaml:"silent"`
-	OutputDir  string            `yaml:"output-dir"`
-	OutputFile string            `yaml:"output-file"`
-	Steps      map[string]string `yaml:"steps"`
-	Errors     map[string]string `yaml:"-"`
+type Config struct {
+	Vars     map[string]string `yaml:"vars"`
+	Parallel bool              `yaml:"parallel"`
+	Tasks    []struct {
+		Name    string   `yaml:"name"`
+		Cmds    []string `yaml:"cmds"`
+		Silent  bool     `yaml:"silent"`
+	} `yaml:"modules"`
 }
 
 func main() {
-	var workflowFile string
-	var placeholdersJSON string
-	flag.StringVar(&workflowFile, "workflow", "", "Path to the workflow YAML file")
-	flag.StringVar(&workflowFile, "w", "", "Path to the workflow YAML file (alias)")
+	var (
+		taskFile  string
+		variables map[string]string
+	)
 
-	flag.StringVar(&placeholdersJSON, "placeholders", "", "JSON representation of placeholders and values")
-	flag.StringVar(&placeholdersJSON, "p", "", "JSON representation of placeholders and values (alias)")
+	flag.StringVar(&taskFile, "w", "", "Path to the workflow YAML file")
 	flag.Parse()
-
 	log.SetFlags(0)
 
-	log.Print(`
+	// Color formatting functions
+	cyan := color.New(color.FgCyan).SprintFunc()
+	yellow := color.New(color.FgYellow).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
+	green := color.New(color.FgGreen).SprintFunc()
+	white := color.New(color.FgWhite).SprintFunc()
+	magenta := color.New(color.FgMagenta).SprintFunc()
 
-
+	// Print banner
+	fmt.Printf("\n%s\n\n", white(`
 	                         __         
 	   _____________  ______/ /__  _____
 	  / ___/ __  / / / / __  / _ \/ ___/
@@ -50,206 +52,159 @@ func main() {
 	/_/   \____/\___ /\____/\___/_/     
 	           /____/                   
 
+	           		- v0.0.2 ⚡
 
- `)
-	// Parse the placeholders JSON data (if provided)
-	var placeholders map[string]string
-	if placeholdersJSON != "" {
-		if err := json.Unmarshal([]byte(placeholdersJSON), &placeholders); err != nil {
-			log.Fatal("Error parsing placeholders JSON:", err)
+`))
+
+
+		var defaultVars map[string]string
+	yamlFileContent, err := ioutil.ReadFile(taskFile)
+	if err == nil {
+		var config Config
+		err = yaml.Unmarshal(yamlFileContent, &config)
+		if err == nil {
+			defaultVars = config.Vars
 		}
 	}
 
-	// Read the YAML file
-	yamlData, err := ioutil.ReadFile(workflowFile)
+	variables = parseArgs(defaultVars)
+
+
+	if taskFile == "" {
+		fmt.Println("Usage: rayder -w workflow.yaml [variable assignments e.g. DOMAIN=example.host]")
+		return
+	}
+
+	taskFileContent, err := ioutil.ReadFile(taskFile)
 	if err != nil {
-		log.Fatal("Error reading YAML file:", err)
+		log.Fatalf("Error reading workflow file: %v", err)
 	}
 
-	// Replace placeholders in the YAML content (if placeholders provided)
-	yamlContent := string(yamlData)
-	for placeholder, value := range placeholders {
-		placeholderTag := fmt.Sprintf("<<%s>>", placeholder)
-		yamlContent = strings.ReplaceAll(yamlContent, placeholderTag, value)
-	}
-
-	// Parse the modified YAML data into a Workflow struct
-	var workflow Workflow
-	err = yaml.Unmarshal([]byte(yamlContent), &workflow)
+	var config Config
+	err = yaml.Unmarshal(taskFileContent, &config)
 	if err != nil {
-		log.Fatal("Error parsing YAML:", err)
+		log.Fatalf("Error unmarshaling YAML: %v", err)
 	}
 
-	// Ensure the output directory exists
-	if workflow.OutputDir != "" {
-		err = os.MkdirAll(workflow.OutputDir, 0755)
-		if err != nil {
-			log.Fatalf("Error creating output directory: %v", err)
+	runAllTasks(config, variables, cyan, magenta, white, yellow, red, green)
+}
+
+func parseArgs(defaultVars map[string]string) map[string]string {
+	var variables map[string]string
+
+	for _, arg := range flag.Args() {
+		parts := strings.SplitN(arg, "=", 2)
+		if len(parts) == 2 {
+			if variables == nil {
+				variables = make(map[string]string)
+			}
+			variables[parts[0]] = parts[1]
 		}
 	}
 
-	fmt.Printf("[%s] [%s] Executing workflow %s\n", getTimeStamp(), getColorizedLog("INFO", "green"), workflow.Name)
-
-	// Determine the number of workers
-	numWorkers := workflow.Workers
-	if numWorkers == 0 {
-		numWorkers = 10
+	// Apply default values if not provided by the user
+	for key, defaultValue := range defaultVars {
+		if _, exists := variables[key]; !exists {
+			variables[key] = defaultValue
+		}
 	}
 
+	return variables
+}
+
+
+func runAllTasks(config Config, variables map[string]string, cyan, magenta, white, yellow, red, green func(a ...interface{}) string) {
 	var wg sync.WaitGroup
-	// Execute steps sequentially if parallel is false
-	if !workflow.Parallel {
-		runSequential(workflow.Steps, workflow.OutputDir, workflow.OutputFile, workflow.Silent, &workflow)
-	} else {
-		runParallel(workflow.Steps, numWorkers, workflow.OutputDir, workflow.OutputFile, workflow.Silent, &workflow, &wg)
-	}
+	var errorOccurred bool
+	var errorMutex sync.Mutex
 
-	// Print error messages for steps that failed
-	printErrorMessages(workflow.Errors)
-
-	fmt.Printf("[%s] [%s] Output saved in '%s' dir\n", getTimeStamp(), getColorizedLog("INFO", "green"), workflow.OutputDir)
-	fmt.Printf("[%s] [%s] Job Finished", getTimeStamp(), getColorizedLog("INFO", "green"))
-}
-
-
-
-func runParallel(steps map[string]string, numWorkers int, outputDir, outputFile string, silent bool, workflow *Workflow, wg *sync.WaitGroup) {
-	// Collect errors for steps that failed
-	var mu sync.Mutex
-	workflow.Errors = make(map[string]string)
-
-	semaphore := make(chan struct{}, numWorkers)
-
-	for stepName, command := range steps {
-		wg.Add(1)
-		go func(name string, cmd string) {
-			defer wg.Done()
-
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			fmt.Printf("[%s] [%s] Executing step: %s: %s\n", getTimeStamp(), getColorizedLog("INFO", "green"), name, cmd)
-			execCmd := exec.Command("sh", "-c", cmd)
-
-			if silent {
-				execCmd.Stdout = ioutil.Discard
-				execCmd.Stderr = ioutil.Discard
-			} else {
-				execCmd.Stdout = os.Stdout
-				execCmd.Stderr = os.Stderr
-			}
-
-			if outputDir != "" && outputFile != "" {
-				outputPath := filepath.Join(outputDir, outputFile)
-				file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	for _, task := range config.Tasks {
+		if config.Parallel {
+			wg.Add(1)
+			go func(name string, cmds []string, silent bool, vars map[string]string) {
+				defer wg.Done()
+				err := runTask(name, cmds, silent, vars, cyan, magenta, white, yellow, red, green)
 				if err != nil {
-					fmt.Printf("[%s] [%s] Error opening output file for step '%s': %v\n", getTimeStamp(), getColorizedLog("ERROR", "red"), name, err)
-					return
+					errorMutex.Lock()
+					errorOccurred = true
+					fmt.Printf("[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(name), red("errored"))
+					errorMutex.Unlock()
 				}
-				defer file.Close()
-				execCmd.Stdout = io.MultiWriter(file, execCmd.Stdout)
-				execCmd.Stderr = io.MultiWriter(file, execCmd.Stderr)
-			}
-
-			err := execCmd.Run()
-			if err != nil {
-				errorMessage := fmt.Sprintf("Failed to execute: %v", err)
-				mu.Lock()
-				workflow.Errors[name] = errorMessage
-				mu.Unlock()
-
-				fmt.Printf("[%s] [%s] %s: %s\n", getTimeStamp(), getColorizedLog("ERROR", "red"), name, errorMessage)
-			}
-		}(stepName, command)
-	}
-
-	wg.Wait()
-}
-
-func runSequential(steps map[string]string, outputDir, outputFile string, silent bool, workflow *Workflow) {
-	stepOrder := make([]string, 0, len(steps))
-	for stepName := range steps {
-		stepOrder = append(stepOrder, stepName)
-	}
-
-	// Sort the steps based on their order
-	sort.Strings(stepOrder)
-
-	// Initialize the Errors map
-	workflow.Errors = make(map[string]string)
-
-	for _, stepName := range stepOrder {
-		cmd, exists := steps[stepName]
-		if !exists {
-			fmt.Printf("[%s] [%s] %s: %s\n", getTimeStamp(), getColorizedLog("ERROR", "red"), stepName, "Step not found")
-			continue
-		}
-
-		fmt.Printf("[%s] [%s] Executing step: %s: %s\n", getTimeStamp(), getColorizedLog("INFO", "green"), stepName, cmd)
-		execCmd := exec.Command("sh", "-c", cmd)
-
-
-		if silent {
-			execCmd.Stdout = ioutil.Discard
-			execCmd.Stderr = ioutil.Discard
+			}(task.Name, task.Cmds, task.Silent, variables)
 		} else {
-			execCmd.Stdout = os.Stdout
-			execCmd.Stderr = os.Stderr
-		}
-
-		if outputDir != "" && outputFile != "" {
-			outputPath := filepath.Join(outputDir, outputFile)
-			file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			err := runTask(task.Name, task.Cmds, task.Silent, variables, cyan, magenta, white, yellow, red, green)
 			if err != nil {
-				fmt.Printf("[%s] [%s] Error opening output file for step '%s': %v\n", getTimeStamp(), getColorizedLog("ERROR", "red"), stepName, err)
-				continue
+				errorOccurred = true
+				fmt.Printf("[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(task.Name), red("errored"))
+				return // Exit the function immediately if an error occurs
 			}
-			defer file.Close()
-			execCmd.Stdout = io.MultiWriter(file, execCmd.Stdout)
-			execCmd.Stderr = io.MultiWriter(file, execCmd.Stderr)
 		}
+	} 
 
-		err := execCmd.Run()
+	if config.Parallel {
+		wg.Wait()
+	}
+
+	if !config.Parallel && errorOccurred {
+		fmt.Printf("[%s] [%s] Errors occurred during execution. Exiting program ❌\n", yellow(currentTime()), red("INFO"))
+		os.Exit(1) // Exit with error code 1
+	}
+
+	if errorOccurred {
+		fmt.Printf("[%s] [%s] Errors occurred during execution of some command(s) ❌\n", yellow(currentTime()), red("INFO"))
+	} else {
+		fmt.Printf("[%s] [%s] All modules completed successfully ✅\n", yellow(currentTime()), yellow("INFO"))
+	}
+}
+
+func runTask(taskName string, cmds []string, silent bool, vars map[string]string, cyan, magenta, white, yellow, red, green func(a ...interface{}) string) error {
+	currentTime()
+	fmt.Printf("[%s] [%s] Module '%s' %s ⚡\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), yellow("running"))
+
+	var hasError bool
+	for _, cmd := range cmds {
+		err := executeCommand(cmd, silent, vars)
 		if err != nil {
-			errorMessage := fmt.Sprintf("Failed to execute: %v", err)
-			workflow.Errors[stepName] = errorMessage
-
-			fmt.Printf("[%s] [%s] %s: %s\n", getTimeStamp(), getColorizedLog("ERROR", "red"), stepName, errorMessage)
-			fmt.Printf("[%s] [%s] Exiting due to error in step: %s\n", getTimeStamp(), getColorizedLog("ERROR", "red"), stepName)
-			os.Exit(1)
+			hasError = true
+			break
 		}
 	}
-}
 
-
-
-
-func printErrorMessages(errors map[string]string) {
-	for stepName, errorMessage := range errors {
-		fmt.Printf("[%s] [%s] %s: %s\n", getTimeStamp(), getColorizedLog("ERROR", "red"), stepName, errorMessage)
-	}
-}
-
-func getTimeStamp() string {
-	return time.Now().Format("15:04:05")
-}
-
-func getColorizedLog(text, color string) string {
-	colorCode := getColorCode(color)
-	return fmt.Sprintf("\033[%sm%s\033[0m", colorCode, text)
-}
-
-func getColorCode(color string) string {
-	colorMap := map[string]string{
-		"black":   "30",
-		"red":     "31",
-		"green":   "32",
-		"yellow":  "33",
-		"blue":    "34",
-		"magenta": "35",
-		"cyan":    "36",
-		"white":   "37",
+	if hasError {
+		return fmt.Errorf("Module '%s' %s ❌", taskName, red("errored"))
 	}
 
-	return colorMap[color]
+	fmt.Printf("[%s] [%s] Module '%s' %s ✅\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), green("completed"))
+	return nil
+}
+
+func executeCommand(cmdStr string, silent bool, vars map[string]string) error {
+	cmdStr = replacePlaceholders(cmdStr, vars)
+	execCmd := exec.Command("sh", "-c", cmdStr)
+
+	if silent {
+		execCmd.Stdout = nil
+		execCmd.Stderr = nil
+	} else {
+		execCmd.Stdout = os.Stdout
+		execCmd.Stderr = os.Stderr
+	}
+
+	err := execCmd.Run()
+	if err != nil {
+		return fmt.Errorf("command execution failed: %w", err)
+	}
+	return nil
+}
+
+func replacePlaceholders(input string, vars map[string]string) string {
+	for key, value := range vars {
+		placeholder := fmt.Sprintf("{{%s}}", key)
+		input = strings.ReplaceAll(input, placeholder, value)
+	}
+	return input
+}
+
+func currentTime() string {
+	return time.Now().Format("2006-01-02 15:04:05")
 }
