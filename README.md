@@ -27,7 +27,7 @@ Rayder is a command-line tool designed to simplify the orchestration and executi
 To install Rayder, ensure you have Go (1.16 or higher) installed on your system. Then, run the following command:
 
 ```sh
-go install github.com/devanshbatham/rayder@v0.0.2
+go install github.com/devanshbatham/rayder@v0.0.3
 ```
 
 ## Usage
