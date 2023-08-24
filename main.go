@@ -29,9 +29,11 @@ func main() {
 	var (
 		taskFile  string
 		variables map[string]string
+		quietMode  bool // Flag to indicate quiet mode
 	)
 
 	flag.StringVar(&taskFile, "w", "", "Path to the workflow YAML file")
+	flag.BoolVar(&quietMode, "q", false, "Suppress banner")
 	flag.Parse()
 	log.SetFlags(0)
 
@@ -44,7 +46,9 @@ func main() {
 	magenta := color.New(color.FgMagenta).SprintFunc()
 
 	// Print banner
-	fmt.Printf("\n%s\n\n", white(`
+	if !quietMode {
+		// Print banner only if quiet mode is not enabled
+		fmt.Printf("\n%s\n\n", white(`
 	                         __         
 	   _____________  ______/ /__  _____
 	  / ___/ __  / / / / __  / _ \/ ___/
@@ -52,12 +56,13 @@ func main() {
 	/_/   \____/\___ /\____/\___/_/     
 	           /____/                   
 
-	           		- v0.0.2 ⚡
+	           		- v0.0.3 ⚡
 
 `))
 
+}
 
-		var defaultVars map[string]string
+	var defaultVars map[string]string
 	yamlFileContent, err := ioutil.ReadFile(taskFile)
 	if err == nil {
 		var config Config
@@ -90,7 +95,7 @@ func main() {
 }
 
 func parseArgs(defaultVars map[string]string) map[string]string {
-	var variables map[string]string
+	variables := make(map[string]string)
 
 	for _, arg := range flag.Args() {
 		parts := strings.SplitN(arg, "=", 2)
