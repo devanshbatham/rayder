@@ -18,12 +18,14 @@ import (
 type Config struct {
 	Vars     map[string]string `yaml:"vars"`
 	Parallel bool              `yaml:"parallel"`
+	Usage    string            `yaml:"usage"` // Add the usage field
 	Tasks    []struct {
 		Name    string   `yaml:"name"`
 		Cmds    []string `yaml:"cmds"`
 		Silent  bool     `yaml:"silent"`
 	} `yaml:"modules"`
 }
+
 
 func main() {
 	var (
@@ -56,7 +58,7 @@ func main() {
 	/_/   \____/\___ /\____/\___/_/     
 	           /____/                   
 
-	           		- v0.0.3 ⚡
+	           		- v0.0.4 ⚡
 
 `))
 
@@ -96,8 +98,14 @@ func main() {
 
 func parseArgs(defaultVars map[string]string) map[string]string {
 	variables := make(map[string]string)
+	usageRequested := false
 
 	for _, arg := range flag.Args() {
+		if arg == "usage" || arg == "USAGE" {
+			usageRequested = true
+			break
+		}
+
 		parts := strings.SplitN(arg, "=", 2)
 		if len(parts) == 2 {
 			if variables == nil {
@@ -105,6 +113,21 @@ func parseArgs(defaultVars map[string]string) map[string]string {
 			}
 			variables[parts[0]] = parts[1]
 		}
+	}
+
+	// Check if "usage" was requested
+	if usageRequested {
+		fmt.Println("Usage:")
+		fmt.Println(defaultVars["USAGE"])
+
+		fmt.Println("\nVariables from YAML:")
+		for key, value := range defaultVars {
+			if key != "USAGE" {
+				fmt.Printf("%s: %s\n", key, value)
+			}
+		}
+
+		os.Exit(0)
 	}
 
 	// Apply default values if not provided by the user
@@ -116,6 +139,11 @@ func parseArgs(defaultVars map[string]string) map[string]string {
 
 	return variables
 }
+
+
+
+
+
 
 
 func runAllTasks(config Config, variables map[string]string, cyan, magenta, white, yellow, red, green func(a ...interface{}) string) {
