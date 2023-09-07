@@ -1,4 +1,4 @@
-module github.com/devanshbatham/rayder
+module github.com/RikunjSindhwad/rayder
 
 go 1.20
 
