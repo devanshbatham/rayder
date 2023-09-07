@@ -15,23 +15,24 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	Vars     map[string]string `yaml:"vars"`
-	Parallel bool              `yaml:"parallel"`
-	Usage    string            `yaml:"usage"` // Add the usage field
-	Tasks    []struct {
-		Name    string   `yaml:"name"`
-		Cmds    []string `yaml:"cmds"`
-		Silent  bool     `yaml:"silent"`
-	} `yaml:"modules"`
+type Task struct {
+	Name     string   `yaml:"name"`
+	Cmds     []string `yaml:"cmds"`
+	Silent   bool     `yaml:"silent"`
+	Parallel bool     `yaml:"parallel"` // Add the parallel field for each task
 }
 
+type Config struct {
+	Vars  map[string]string `yaml:"vars"`
+	Usage string            `yaml:"usage"` // Add the usage field
+	Tasks []Task            `yaml:"modules"`
+}
 
 func main() {
 	var (
 		taskFile  string
 		variables map[string]string
-		quietMode  bool // Flag to indicate quiet mode
+		quietMode bool // Flag to indicate quiet mode
 	)
 
 	flag.StringVar(&taskFile, "w", "", "Path to the workflow YAML file")
@@ -50,7 +51,7 @@ func main() {
 	// Print banner
 	if !quietMode {
 		// Print banner only if quiet mode is not enabled
-		fmt.Printf("\n%s\n\n", white(`
+		fmt.Fprintf(os.Stderr,"\n%s\n\n", white(`
 	                         __         
 	   _____________  ______/ /__  _____
 	  / ___/ __  / / / / __  / _ \/ ___/
@@ -62,7 +63,7 @@ func main() {
 
 `))
 
-}
+	}
 
 	var defaultVars map[string]string
 	yamlFileContent, err := ioutil.ReadFile(taskFile)
@@ -76,9 +77,8 @@ func main() {
 
 	variables = parseArgs(defaultVars)
 
-
 	if taskFile == "" {
-		fmt.Println("Usage: rayder -w workflow.yaml [variable assignments e.g. DOMAIN=example.host]")
+		fmt.Fprintln(os.Stderr,"Usage: rayder -w workflow.yaml [variable assignments e.g. DOMAIN=example.host]")
 		return
 	}
 
@@ -117,13 +117,13 @@ func parseArgs(defaultVars map[string]string) map[string]string {
 
 	// Check if "usage" was requested
 	if usageRequested {
-		fmt.Println("Usage:")
-		fmt.Println(defaultVars["USAGE"])
+		fmt.Fprintln(os.Stderr,"Usage:")
+		fmt.Fprintln(os.Stderr,defaultVars["USAGE"])
 
-		fmt.Println("\nVariables from YAML:")
+		fmt.Fprintln(os.Stderr,"\nVariables from YAML:")
 		for key, value := range defaultVars {
 			if key != "USAGE" {
-				fmt.Printf("%s: %s\n", key, value)
+				fmt.Fprintf(os.Stderr,"%s: %s\n", key, value)
 			}
 		}
 
@@ -142,17 +142,13 @@ func parseArgs(defaultVars map[string]string) map[string]string {
 
 
 
-
-
-
-
 func runAllTasks(config Config, variables map[string]string, cyan, magenta, white, yellow, red, green func(a ...interface{}) string) {
 	var wg sync.WaitGroup
 	var errorOccurred bool
 	var errorMutex sync.Mutex
 
 	for _, task := range config.Tasks {
-		if config.Parallel {
+		if task.Parallel {
 			wg.Add(1)
 			go func(name string, cmds []string, silent bool, vars map[string]string) {
 				defer wg.Done()
@@ -160,7 +156,7 @@ func runAllTasks(config Config, variables map[string]string, cyan, magenta, whit
 				if err != nil {
 					errorMutex.Lock()
 					errorOccurred = true
-					fmt.Printf("[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(name), red("errored"))
+					fmt.Fprintf(os.Stderr,"[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(name), red("errored"))
 					errorMutex.Unlock()
 				}
 			}(task.Name, task.Cmds, task.Silent, variables)
@@ -168,31 +164,24 @@ func runAllTasks(config Config, variables map[string]string, cyan, magenta, whit
 			err := runTask(task.Name, task.Cmds, task.Silent, variables, cyan, magenta, white, yellow, red, green)
 			if err != nil {
 				errorOccurred = true
-				fmt.Printf("[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(task.Name), red("errored"))
-				return // Exit the function immediately if an error occurs
+				fmt.Fprintf(os.Stderr,"[%s] [%s] Module '%s' %s ❌\n", yellow(currentTime()), red("INFO"), cyan(task.Name), red("errored"))
 			}
 		}
-	} 
-
-	if config.Parallel {
-		wg.Wait()
 	}
 
-	if !config.Parallel && errorOccurred {
-		fmt.Printf("[%s] [%s] Errors occurred during execution. Exiting program ❌\n", yellow(currentTime()), red("INFO"))
+	wg.Wait() // Wait for all parallel tasks to finish
+
+	if errorOccurred {
+		fmt.Fprintf(os.Stderr,"[%s] [%s] Errors occurred during execution. Exiting program ❌\n", yellow(currentTime()), red("INFO"))
 		os.Exit(1) // Exit with error code 1
 	}
 
-	if errorOccurred {
-		fmt.Printf("[%s] [%s] Errors occurred during execution of some command(s) ❌\n", yellow(currentTime()), red("INFO"))
-	} else {
-		fmt.Printf("[%s] [%s] All modules completed successfully ✅\n", yellow(currentTime()), yellow("INFO"))
-	}
+	fmt.Fprintf(os.Stderr,"[%s] [%s] All modules completed successfully ✅\n", yellow(currentTime()), yellow("INFO"))
 }
 
 func runTask(taskName string, cmds []string, silent bool, vars map[string]string, cyan, magenta, white, yellow, red, green func(a ...interface{}) string) error {
 	currentTime()
-	fmt.Printf("[%s] [%s] Module '%s' %s ⚡\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), yellow("running"))
+	fmt.Fprintf(os.Stderr,"[%s] [%s] Module '%s' %s ⚡\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), yellow("running"))
 
 	var hasError bool
 	for _, cmd := range cmds {
@@ -207,7 +196,7 @@ func runTask(taskName string, cmds []string, silent bool, vars map[string]string
 		return fmt.Errorf("Module '%s' %s ❌", taskName, red("errored"))
 	}
 
-	fmt.Printf("[%s] [%s] Module '%s' %s ✅\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), green("completed"))
+	fmt.Fprintf(os.Stderr,"[%s] [%s] Module '%s' %s ✅\n", yellow(currentTime()), yellow("INFO"), cyan(taskName), green("completed"))
 	return nil
 }
 
