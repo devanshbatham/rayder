@@ -81,7 +81,7 @@ You can reference variables within your command strings using double curly brace
 modules:
   - name: example-task
     cmds:
-      - echo "Output directory: {{OUTPUT_DIR}}"
+      - echo "Output directory {{OUTPUT_DIR}}"
 ```
 
 ### Supplying Variables via the Command Line
@@ -110,8 +110,8 @@ vars:
 modules:
   - name: example-task
     cmds:
-      - echo "Organization: {{ORG}}"
-      - echo "Output directory: {{OUTPUT_DIR}}"
+      - echo "Organization {{ORG}}"
+      - echo "Output directory {{OUTPUT_DIR}}"
 ```
 
 When executing the workflow, you can provide values for `ORG` and `OUTPUT_DIR` via the command line like this:
